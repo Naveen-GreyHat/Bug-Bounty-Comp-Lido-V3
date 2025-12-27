@@ -227,3 +227,105 @@ These changes are minimal, backward-compatible, and prevent regressions without 
 ## Conclusion
 
 The absence of monotonicity enforcement in LazyOracle's `updateReportData` allows stale oracle reports to overwrite fresher ones, compromising the reliability of this trusted data source. Given its integration with vault accounting, safety checks, and economic operations in Lido V3, this vulnerability poses a critical threat to protocol integrity, potentially leading to insolvency, fund losses, and security bypasses. The provided PoC demonstrates the issue clearly, and the recommended fixes offer a straightforward resolution. This report is submission-ready for Immunefi or similar platforms, with comprehensive analysis to withstand reviewer scrutiny.
+
+
+# Bug-Bounty-Comp-Lido-V3
+
+**Repository for reproducing a Critical vulnerability in Lido V3: LazyOracle allows stale oracle reports to overwrite newer data due to missing monotonicity checks.**
+
+This repo contains:
+- The unmodified `LazyOracle.sol` contract from Lido V3 (in-scope for the Immunefi audit competition).
+- A minimal Foundry test that demonstrates the vulnerability with a deterministic Proof of Concept (PoC).
+
+The PoC test **intentionally fails** to confirm the bug — a failing test proves that stale (older) oracle reports can regress the stored `refSlot` and `timestamp`.
+
+## Vulnerability Summary
+
+**Title:** LazyOracle Allows Stale Oracle Data Overwrite via refSlot/Timestamp Regression  
+
+**Severity:** Critical (Protocol insolvency risk, safety bypass, incorrect accounting)  
+
+**Affected Contract:** `LazyOracle.sol` → `updateReportData()` lacks checks for `_vaultsDataRefSlot > storedRefSlot` and `_vaultsDataTimestamp > storedTimestamp`.
+
+Authorized callers (e.g., AccountingOracle) can submit older reports, overwriting newer state. This can propagate stale data into vault accounting and quarantine logic.
+
+## Quick Start: Reproduce the Bug in < 2 Minutes
+
+### 1. Prerequisites
+
+- **Foundry** installed (Forge & Anvil)
+
+  Install with:
+  ```bash
+  curl -L https://foundry.paradigm.xyz | bash
+  source ~/.bashrc  # or restart terminal
+  foundryup
+  ```
+
+- Git
+
+No Node.js or other dependencies required.
+
+### 2. Clone & Navigate
+
+```bash
+git clone https://github.com/Naveen-GreyHat/Bug-Bounty-Comp-Lido-V3.git
+cd Bug-Bounty-Comp-Lido-V3
+```
+
+### 3. Clean Build (Recommended)
+
+```bash
+forge clean
+```
+
+### 4. Run the PoC Test
+
+```bash
+forge test --match-test test_RefSlotRegressionAccepted -vvv
+```
+
+### 5. Expected Output → **TEST FAILS** (This Confirms the Bug!)
+
+You should see something like:
+
+```
+[PASS] ... (setup tests)
+[FAIL. Reason: RefSlot regression accepted: 150 != 200] test_RefSlotRegressionAccepted() (gas: ...)
+```
+
+**Explanation of Failure:**
+- First report: `refSlot = 200` (newer) → stored successfully.
+- Second report: `refSlot = 150` (older) → accepted and overwrites the newer value.
+- Assertion expects `200` but gets `150` → **FAIL**.
+
+This proves the contract accepts regressing (stale) oracle data without rejection.
+
+### 6. Verify the Fix (Optional – For Confirmation)
+
+To see how the bug is resolved, manually add these checks to `contracts/LazyOracle.sol` in `updateReportData()`:
+
+```solidity
+require(_vaultsDataRefSlot > $.vaultsDataRefSlot, "STALE_REF_SLOT");
+require(_vaultsDataTimestamp > $.vaultsDataTimestamp, "STALE_TIMESTAMP");
+```
+
+Then re-run:
+
+```bash
+forge test --match-test test_RefSlotRegressionAccepted -vvv
+```
+
+→ Now the test will **PASS** (older report is rejected).
+
+## Repository Structure
+
+```
+.
+├── contracts/
+│   └── LazyOracle.sol                  # Unmodified in-scope contract
+├── test/
+│   └── LazyOracle_RefSlotRegression.t.sol  # PoC test + minimal mock
+├── foundry.toml                        # Foundry config
+└── README.md                           # This file
+```
