@@ -1,4 +1,4 @@
-# Critical Vulnerability Report: LazyOracle Permits Overwriting of Fresh Oracle Reports with Stale Data via refSlot and Timestamp Regression
+# Critical Vulnerability Report: Bug-Bounty-Comp-Lido-V3 | LazyOracle Permits Overwriting of Fresh Oracle Reports with Stale Data via refSlot and Timestamp Regression
 
 ## Summary
 
